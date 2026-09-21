@@ -887,6 +887,30 @@ footer > div {
 .field select {
   font-size: 13px;
 }
+.password-wrap {
+  position: relative;
+  display: flex;
+}
+.password-wrap input {
+  padding-right: 44px;
+}
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: #7a8270;
+  border-radius: 0 6px 6px 0;
+}
+.password-toggle:hover {
+  color: var(--ink);
+}
 .auth-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
