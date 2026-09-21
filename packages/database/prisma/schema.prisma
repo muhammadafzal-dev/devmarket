@@ -1,0 +1,102 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(cuid())
+ name String
+ email String @unique
+ passwordHash String
+ role String @default("CLIENT")
+ emailVerified Boolean @default(false)
+ connectAccountId String? @unique
+ connectReady Boolean @default(false)
+ connectMode String?
+ createdAt DateTime @default(now())
+ sessions Session[]
+ tokens AuthToken[]
+ services Service[]
+ purchases Order[] @relation("buyer")
+ sales Order[] @relation("seller")
+}
+model Session {
+ id String @id
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ expiresAt DateTime
+}
+model AuthToken {
+ id String @id
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ kind String
+ expiresAt DateTime
+}
+model Mail {
+ id String @id @default(cuid())
+ to String
+ subject String
+ url String
+ createdAt DateTime @default(now())
+}
+model Service {
+ id String @id @default(cuid())
+ title String
+ description String
+ category String
+ priceCents Int
+ deliveryDays Int
+ published Boolean @default(false)
+ sellerId String
+ seller User @relation(fields:[sellerId],references:[id])
+ createdAt DateTime @default(now())
+}
+model Order {
+ id String @id @default(cuid())
+ title String
+ requirements String
+ totalCents Int
+ feeCents Int
+ sellerCents Int
+ currency String @default("usd")
+ status String @default("AWAITING_PAYMENT")
+ paymentStatus String @default("UNPAID")
+ transferStatus String @default("NOT_RELEASED")
+ paymentMode String
+ buyerId String
+ buyer User @relation("buyer",fields:[buyerId],references:[id])
+ sellerId String
+ seller User @relation("seller",fields:[sellerId],references:[id])
+ checkoutId String? @unique
+ checkoutUrl String?
+ checkoutAttempt Int @default(0)
+ paymentIntentId String? @unique
+ chargeId String? @unique
+ transferId String? @unique
+ refundId String? @unique
+ financialLock String?
+ transferStartedAt DateTime?
+ refundStartedAt DateTime?
+ checkoutStartedAt DateTime?
+ deliveryMessage String?
+ deliveryUrl String?
+ revisionNote String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ events OrderEvent[]
+}
+model OrderEvent {
+ id String @id @default(cuid())
+ orderId String
+ order Order @relation(fields:[orderId],references:[id],onDelete:Cascade)
+ action String
+ message String
+ createdAt DateTime @default(now())
+}
+model WebhookEvent {
+ id String @id
+ createdAt DateTime @default(now())
+}

@@ -1,0 +1,28 @@
+{
+  "name": "devmarket",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "yarn@4.12.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "yarn workspace @devmarket/api build && yarn workspace @devmarket/web build",
+    "typecheck": "yarn workspaces foreach -A --parallel run typecheck",
+    "test": "yarn workspace @devmarket/api test",
+    "db:generate": "yarn workspace @devmarket/database generate",
+    "db:push": "node scripts/database.mjs push",
+    "db:seed": "yarn workspace @devmarket/api seed",
+    "setup": "yarn db:generate && yarn db:push && yarn db:seed",
+    "db:local:start": "node scripts/local-postgres.mjs start",
+    "db:local:stop": "node scripts/local-postgres.mjs stop"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "prettier": "^3.9.8"
+  }
+}
