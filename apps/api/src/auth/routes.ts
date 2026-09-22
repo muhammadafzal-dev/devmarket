@@ -147,6 +147,18 @@ export function registerAuthRoutes(ctx: RouteContext) {
             password: kind === "reset" ? passwords : z.string().optional(),
           })
           .parse(req.body);
+        // Fail fast: reject an invalid/expired token before paying the bcrypt cost.
+        // The transaction below re-checks and single-uses the token authoritatively.
+        if (kind === "reset") {
+          const existing = await db.authToken.findUnique({
+            where: { id: hash(data.token) },
+          });
+          check(
+            existing && existing.kind === kind && existing.expiresAt > new Date(),
+            "Invalid or expired token",
+            400,
+          );
+        }
         const passwordHash =
           kind === "reset" ? await bcrypt.hash(data.password!, 12) : undefined;
         await db.$transaction(async (tx) => {

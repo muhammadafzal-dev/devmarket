@@ -177,6 +177,8 @@ export function createApp(
                   paymentStatus: "REFUNDED",
                   status:
                     o.transferStatus === "TRANSFERRED" ? o.status : "CANCELLED",
+                  // Clear the mutex on a terminal refund, mirroring the paid path.
+                  financialLock: null,
                 },
               });
             }
@@ -345,7 +347,7 @@ export function createApp(
   registerDashboardRoutes(context);
   app.use((_req, res) => res.status(404).json({ error: "Endpoint not found" }));
   app.use(
-    (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    (error: unknown, req: Request, res: Response, _next: NextFunction) => {
       if (error instanceof z.ZodError)
         return res
           .status(400)
@@ -364,6 +366,12 @@ export function createApp(
             .status(409)
             .json({ error: "Concurrent operation; please retry" });
       }
+      // Log unexpected errors with request context (no bodies/headers) so failed
+      // transfers/refunds leave a server-side trace beyond the order audit rows.
+      console.error(
+        `Unhandled error on ${req.method} ${req.path}:`,
+        error instanceof Error ? error.stack || error.message : error,
+      );
       res
         .status(500)
         .json({

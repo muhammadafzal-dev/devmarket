@@ -286,28 +286,15 @@ export function registerOrdersRoutes(ctx: RouteContext) {
       run(async (req, res) => {
         const { o, u } = await actorOrder(req, res);
         const seller = action === "start" || action === "deliver";
-        check(
-          seller
-            ? o.sellerId === u.id
-            : o.buyerId === u.id || (action === "cancel" && u.role === "ADMIN"),
-          "Access denied",
-          403,
-        );
+        check(seller ? o.sellerId === u.id : o.buyerId === u.id, "Access denied", 403);
         const expected =
           action === "start"
             ? "PAID"
             : action === "deliver"
               ? "IN_PROGRESS"
-              : action === "revise"
-                ? "DELIVERED"
-                : "AWAITING_PAYMENT";
+              : "DELIVERED";
         let data: any = {
-          status:
-            action === "deliver"
-              ? "DELIVERED"
-              : action === "cancel"
-                ? "CANCELLED"
-                : "IN_PROGRESS",
+          status: action === "deliver" ? "DELIVERED" : "IN_PROGRESS",
         };
         let message: string = action;
         if (action === "deliver") {
@@ -338,29 +325,17 @@ export function registerOrdersRoutes(ctx: RouteContext) {
             .parse(req.body).message;
           data.revisionNote = message;
         }
-        if (action === "cancel")
-          message = z
-            .object({ reason: z.string().trim().min(5).max(1000) })
-            .parse(req.body).reason;
         await db.$transaction(async (tx) => {
           const updated = await tx.order.updateMany({
             where: {
               id: o.id,
               status: expected,
               financialLock: null,
-              ...(action === "cancel"
-                ? {
-                    checkoutId: null,
-                    paymentStatus: { in: ["UNPAID", "FAILED"] },
-                  }
-                : { paymentStatus: "PAID" }),
+              paymentStatus: "PAID",
             },
             data,
           });
-          check(
-            updated.count,
-            "Invalid order state; checkout orders cannot be cancelled until payment is reconciled.",
-          );
+          check(updated.count, "Invalid order state for this action.");
           await audit(tx, o.id, action.toUpperCase(), message);
         });
         res.json({ order: await output(o.id) });
