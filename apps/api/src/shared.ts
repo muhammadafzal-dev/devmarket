@@ -1,6 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { User } from "@prisma/client";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
+// Shared limiter for mutating/provider-touching route groups. Skipped under test so
+// the concurrent integration suite is not throttled; active in dev and production.
+export const limiter = (limit: number) =>
+  rateLimit({
+    windowMs: 15 * 60000,
+    limit,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
+  });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export const token = () => randomBytes(32).toString("hex");

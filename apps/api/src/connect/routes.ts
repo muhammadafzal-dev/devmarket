@@ -1,38 +1,9 @@
-import { z } from "zod";
-import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import type { RouteContext } from "../app.js";
-import {
-  hash,
-  token,
-  publicUser,
-  include,
-  person,
-  HttpError,
-  check,
-  passwords,
-  serviceSchema,
-  serializeOrder,
-} from "../shared.js";
+import { check, limiter } from "../shared.js";
 export function registerConnectRoutes(ctx: RouteContext) {
-  const {
-    app,
-    db,
-    gateway,
-    origin,
-    production,
-    run,
-    audit,
-    getOrder,
-    output,
-    processEvent,
-    user,
-    verified,
-    developer,
-    actorOrder,
-    setSession,
-    sendToken,
-  } = ctx;
+  const { app, db, gateway, origin, run, user, developer } = ctx;
+  // Onboarding/refresh call the payment provider; throttle them.
+  app.use("/api/connect", limiter(120));
   app.get(
     "/api/connect/status",
     run(async (_req, res) => {

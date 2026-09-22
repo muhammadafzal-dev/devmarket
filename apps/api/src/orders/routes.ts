@@ -1,19 +1,6 @@
 import { z } from "zod";
-import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import type { RouteContext } from "../app.js";
-import {
-  hash,
-  token,
-  publicUser,
-  include,
-  person,
-  HttpError,
-  check,
-  passwords,
-  serviceSchema,
-  serializeOrder,
-} from "../shared.js";
+import { check, include, limiter, serializeOrder } from "../shared.js";
 export function registerOrdersRoutes(ctx: RouteContext) {
   const {
     app,
@@ -33,6 +20,8 @@ export function registerOrdersRoutes(ctx: RouteContext) {
     setSession,
     sendToken,
   } = ctx;
+  // Throttle order + payment mutations (each checkout/release calls the provider).
+  app.use("/api/orders", limiter(600));
   app.post(
     "/api/orders",
     run(async (req, res) => {
@@ -424,15 +413,24 @@ export function registerOrdersRoutes(ctx: RouteContext) {
           chargeId: o.chargeId,
         });
         await db.$transaction(async (tx) => {
-          await tx.order.update({
-            where: { id: o.id },
+          // Only finalize the attempt we claimed. If the order changed during the
+          // external transfer (e.g. a dispute/refund webhook), do not blind-overwrite
+          // it, but still record the provider transferId for reconciliation.
+          const done = await tx.order.updateMany({
+            where: {
+              id: o.id,
+              financialLock: "transfer",
+              transferStatus: "PENDING",
+            },
             data: { transferStatus: "TRANSFERRED", transferId: transfer.id },
           });
           await audit(
             tx,
             o.id,
-            "TRANSFERRED",
-            "Developer share transferred to connected Stripe balance (not a bank payout).",
+            done.count ? "TRANSFERRED" : "TRANSFER_RECONCILIATION",
+            done.count
+              ? "Developer share transferred to connected Stripe balance (not a bank payout)."
+              : `Transfer ${transfer.id} completed at the provider but the order changed during the transfer; reconcile manually.`,
           );
         });
       } catch {

@@ -435,6 +435,49 @@ describe.concurrent("marketplace security and money invariants", () => {
     expect((await release()).body.order.transferStatus).toBe("TRANSFERRED");
     expect(calls).toBe(2);
   });
+  it("parks refund/dispute webhooks that arrive during an in-flight transfer", async () => {
+    const o = await paid();
+    await post(`/orders/${o.id}/start`, seller);
+    await post(`/orders/${o.id}/deliver`, seller, {
+      message: "Delivered for webhook race test",
+    });
+    // Simulate a release that has claimed the transfer lock but not yet finalized.
+    await db.order.update({
+      where: { id: o.id },
+      data: {
+        status: "COMPLETED",
+        financialLock: "transfer",
+        transferStatus: "PENDING",
+        transferStartedAt: new Date(),
+      },
+    });
+    // A dispute webhook lands mid-transfer: it must not clobber the release.
+    await app.routeContext.processEvent({
+      id: `race-dispute-${o.id}`,
+      type: "disputed",
+      orderId: o.id,
+      paymentIntentId: `pi_demo_${o.id}`,
+      chargeId: `ch_demo_${o.id}`,
+    });
+    // A refund_pending webhook also lands mid-transfer.
+    await app.routeContext.processEvent({
+      id: `race-refund-${o.id}`,
+      type: "refund_pending",
+      orderId: o.id,
+      paymentIntentId: `pi_demo_${o.id}`,
+      chargeId: `ch_demo_${o.id}`,
+    });
+    const after = await db.order.findUniqueOrThrow({
+      where: { id: o.id },
+      include: { events: true },
+    });
+    // Neither event may mutate the in-flight transfer; both are parked.
+    expect(after.paymentStatus).toBe("PAID");
+    expect(after.financialLock).toBe("transfer");
+    const actions = after.events.map((e) => e.action);
+    expect(actions).toContain("DISPUTED_RECONCILIATION");
+    expect(actions).toContain("REFUND_PENDING_RECONCILIATION");
+  });
   it("withholds publishing and financial mutations until email is verified", async () => {
     const r = await post("/auth/register", "", {
       name: "Unverified Developer",

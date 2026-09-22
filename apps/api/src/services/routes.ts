@@ -1,38 +1,9 @@
-import { z } from "zod";
-import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import type { RouteContext } from "../app.js";
-import {
-  hash,
-  token,
-  publicUser,
-  include,
-  person,
-  HttpError,
-  check,
-  passwords,
-  serviceSchema,
-  serializeOrder,
-} from "../shared.js";
+import { check, limiter, person, serviceSchema } from "../shared.js";
 export function registerServicesRoutes(ctx: RouteContext) {
-  const {
-    app,
-    db,
-    gateway,
-    origin,
-    production,
-    run,
-    audit,
-    getOrder,
-    output,
-    processEvent,
-    user,
-    verified,
-    developer,
-    actorOrder,
-    setSession,
-    sendToken,
-  } = ctx;
+  const { app, db, gateway, run, user, developer } = ctx;
+  // Throttle service create/edit (write) traffic.
+  app.use("/api/services", limiter(300));
   app.get(
     "/api/services",
     run(async (req, res) => {

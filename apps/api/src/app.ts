@@ -165,14 +165,25 @@ export function createApp(
               "Payment reference mismatch",
               400,
             );
+            // Never mutate an order whose funds are mid-transfer (financialLock
+            // "transfer"): a release is in flight, so refund/dispute events are
+            // parked for reconciliation instead of racing it. This keeps refund and
+            // release mutually exclusive even for provider-driven events.
+            // Match every state except an in-flight transfer. Prisma's `not`
+            // excludes NULLs, so null is allowed explicitly.
+            const guard = {
+              id: o.id,
+              OR: [{ financialLock: null }, { financialLock: { not: "transfer" } }],
+            };
+            let skipped = false;
             if (e.type === "refunded") {
               check(
                 e.amountCents === o.totalCents,
                 "Partial refund requires reconciliation",
                 400,
               );
-              await tx.order.update({
-                where: { id: o.id },
+              const r = await tx.order.updateMany({
+                where: guard,
                 data: {
                   paymentStatus: "REFUNDED",
                   status:
@@ -181,25 +192,32 @@ export function createApp(
                   financialLock: null,
                 },
               });
+              skipped = r.count === 0;
             }
-            if (e.type === "refund_pending" && o.paymentStatus !== "REFUNDED")
-              await tx.order.update({
-                where: { id: o.id },
+            if (e.type === "refund_pending" && o.paymentStatus !== "REFUNDED") {
+              const r = await tx.order.updateMany({
+                where: guard,
                 data: {
                   paymentStatus: "REFUND_PENDING",
                   financialLock: "refund",
                 },
               });
-            if (e.type === "disputed" && o.paymentStatus !== "REFUNDED")
-              await tx.order.update({
-                where: { id: o.id },
+              skipped = r.count === 0;
+            }
+            if (e.type === "disputed" && o.paymentStatus !== "REFUNDED") {
+              const r = await tx.order.updateMany({
+                where: guard,
                 data: { paymentStatus: "DISPUTED" },
               });
+              skipped = r.count === 0;
+            }
             await audit(
               tx,
               o.id,
-              e.type.toUpperCase(),
-              "Provider reported " + e.type + ".",
+              skipped ? e.type.toUpperCase() + "_RECONCILIATION" : e.type.toUpperCase(),
+              skipped
+                ? `Provider reported ${e.type} during an in-flight transfer; reconcile manually.`
+                : "Provider reported " + e.type + ".",
             );
           }
         }
